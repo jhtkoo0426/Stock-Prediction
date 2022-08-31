@@ -13,3 +13,4 @@ def plot_series(time, series, format="-", start=0, end=None, label=None):
         plt.legend(fontsize=14)
     plt.grid(True)
 
+
