@@ -1,11 +1,7 @@
-# Stock Prediction Model
-Predicting stock price trends using time series analysis.
+# Stock Prediction
+Predicting stock price trends using time series analysis. This project only serves as a demonstration for applying 
+machine learning in financial markets. It is not designed for production or personal use.
 
-The current version is designed to train a machine learning model on a dataset of a single stock.
-
-### Future Work
-- [ ] Embed a trained model in a website via TensorFlow JS and Django.
-- [ ] To be able to train a new model (or using transfer learning) to predict price trends for more than one stock.
-
+---
 ### Technologies Used
-- [yfinance](https://github.com/ranaroussi/yfinance): download market data from Yahoo! Finance's API.
+- [Finnhub Stock API](https://finnhub.io)
