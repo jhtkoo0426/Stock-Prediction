@@ -1,53 +1,75 @@
 """
 Training a model to predict the price trend for a single stock.
 """
+import math
 import os
-import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import requests
 import time
 import datetime
 import finnhub as fh
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+
+from keras.models import Sequential
+from keras.layers import LSTM, Dropout, Dense
+
 
 FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY')
 
 
-def plot_series_from_df(df, symbol):
-    df.plot()
-    plt.title('Share Price of {} from 2000 to now'.format(symbol))
-    plt.xlabel('Time')
-    plt.ylabel('Share Price')
-    plt.show()
-
-# Calculates the timestamps for today and 2000-01-01.
-def get_timestamps():
-    start = time.mktime(datetime.datetime.strptime('01/01/2000', '%d/%m/%Y').timetuple())
-    end = time.time()
-    return int(start), int(end)
-
-
 # Download historical data for one stock symbol from Finnhub.
-def download_data_as_df(symbol):
-    fh_client = fh.Client(api_key=FINNHUB_API_KEY)
-    start, end = get_timestamps()
-    data = fh_client.stock_candles(symbol, 'D', start, end)
-    df = pd.DataFrame(data)
-    df = df.drop(['s', 't', 'v'], axis=1)
-    return df
+start = time.mktime(datetime.datetime.strptime('01/01/2000', '%d/%m/%Y').timetuple())
+end = time.time()
+fh_client = fh.Client(api_key=FINNHUB_API_KEY)
+candles_dict = fh_client.stock_candles('aapl', 'D', int(start), int(end))
+df = pd.DataFrame(candles_dict)
+print(df)
+print(df.shape)
 
 
-# Prepare dataframe for model training.
-def df_to_tensor(df):
-    train_df, test_df = train_test_split(df, test_size=0.2)  # Split dataframe into 2 datasets.
-    train_ds, test_ds = tf.data.Dataset.from_tensor_slices(dict(train_df)), \
-                        tf.data.Dataset.from_tensor_slices(dict(test_df))
-    print(len(train_ds), len(test_ds))
-    return train_ds, test_ds
+# Visualise closing price history
+plt.figure()
+plt.title('Closing price history of aapl')
+plt.plot(df['c'])
+plt.xlabel('Date')
+plt.ylabel('Close Price USD ($)')
+plt.show()
 
 
-data = download_data_as_df("aapl")
-plot_series_from_df(data, 'aapl')
+# Create a new dataframe with only the closing column
+data = df.filter(['c'])
+dataset = data.values       # Convert to np.array
+print(dataset.shape)
+training_data_len = math.ceil(len(dataset) * .8)
+print(training_data_len)
+
+
+# Scale the data
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(dataset)
+print(scaled_data)
+
+
+# Create the training dataset
+training_data = scaled_data[0:training_data_len, :]
+x_train, y_train = [], []       # Split the data into x_train and y_train datasets
+
+for i in range(60, len(training_data)):
+    x_train.append(training_data[i-60:i, 0])        # Contains 60 values
+    y_train.append(training_data[i, 0])
+    if i <= 60:
+        print(x_train)
+        print(y_train)
+        print()
+
+
+# Convert training datasets to np arrays
+x_train, y_train = np.array(x_train), np.array(y_train)
+
+# Reshape the x training dataset to fit LSTM model
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))        # No. rows, no. of columns, 1
+print(x_train.shape)
+
