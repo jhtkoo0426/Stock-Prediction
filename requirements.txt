@@ -4,3 +4,5 @@ matplotlib~=3.5.3
 tensorflow~=2.9.1
 sklearn~=0.0
 scikit-learn~=1.1.2
+keras~=2.9.0
+finnhub-python~=2.4.14
