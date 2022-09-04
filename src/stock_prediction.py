@@ -3,6 +3,8 @@ Training a model to predict the price trend for a single stock.
 """
 import math
 import os
+
+import keras.callbacks
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,6 +22,13 @@ from keras.layers import LSTM, Dropout, Dense
 FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY')
 
 
+# Callback methods for training
+class CustomCallback(keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        keys = list(logs.keys())
+        print("End epoch {} of training; got log keys: {}".format(epoch, keys))
+
+
 # Download historical data for one stock symbol from Finnhub.
 def download_stock_data(symbol):
     start = time.mktime(datetime.datetime.strptime('01/01/2000', '%d/%m/%Y').timetuple())
@@ -32,8 +41,8 @@ def download_stock_data(symbol):
 
 
 # Create a new dataframe with only the closing column
-def get_closing_column(stock_df):
-    col = stock_df.filter(['c'])
+def get_closing_column(df):
+    col = df.filter(['c'])
     col_arr = col.values       # Convert to np.array
     # print(dataset.shape)
     # print(dataset)
@@ -41,8 +50,8 @@ def get_closing_column(stock_df):
 
 
 # Calculate the amount of training data
-def calc_training_data_len(dataset):
-    length = math.ceil(len(dataset) * .8)
+def calc_training_data_len(ds):
+    length = math.ceil(len(ds) * .8)
     # print(length)
     return length
 
@@ -53,8 +62,8 @@ def create_scaler():
 
 
 # Scale the data for training
-def rescale(dataset, min_scaler):
-    rescaled_data = min_scaler.fit_transform(dataset)
+def rescale(ds, min_scaler):
+    rescaled_data = min_scaler.fit_transform(ds)
     # print(rescaled_data)
     return rescaled_data
 
@@ -76,9 +85,9 @@ def build_training_ds(dataset, training_data_len):
 
 
 # Create the testing dataset
-def build_testing_ds(dataset, length):
+def build_testing_ds(dataset, scaled_dataset, length):
     # Create the testing dataset
-    testing_dataset = dataset[length - 60:, :]
+    testing_dataset = scaled_dataset[length - 60:, :]
     x_testing = []
     y_testing = dataset[length:, :]
     for i in range(60, len(testing_dataset)):
@@ -101,23 +110,23 @@ def run_model(X_train, Y_train):
     model.compile(optimizer='adam', loss='mean_squared_error')  # Compile the model
 
     # Train the model
-    model.fit(X_train, Y_train, batch_size=60, epochs=100)
+    model.fit(X_train, Y_train, batch_size=60, epochs=100, callbacks=[CustomCallback()])
     return model
 
 
 # Main function
 def build_and_predict(symbol):
-    stock_data = download_stock_data(symbol)
-    col, close_price_dataset = get_closing_column(stock_data)
-    training_data_len = calc_training_data_len(close_price_dataset)
+    df = download_stock_data(symbol)
+    data, dataset = get_closing_column(df)
+    training_data_len = calc_training_data_len(dataset)
 
     scaler = create_scaler()
-    scaled_data = rescale(close_price_dataset, scaler)
+    scaled_data = rescale(dataset, scaler)
 
     xt, yt = build_training_ds(scaled_data, training_data_len)
     trained_model = run_model(xt, yt)
 
-    x_test, y_test = build_testing_ds(scaled_data, training_data_len)
+    x_test, y_test = build_testing_ds(dataset, scaled_data, training_data_len)
 
     # Get the model's predicted price values
     predictions = trained_model.predict(x_test)
@@ -125,15 +134,18 @@ def build_and_predict(symbol):
 
     # Get the RMSE
     rmse = np.sqrt(np.mean(predictions-y_test)**2)
-    print("RMSE: ", rmse)
 
-    plot_results(col, training_data_len, predictions)
+    metrics = {
+        "rmse": rmse,
+    }
+
+    return predictions, metrics
 
 
-def plot_results(col, length, predictions):
+def plot_results(data, length, predictions):
     # Prepare results for plot
-    train_data_points = col[:length]
-    validation_data_points = col[length:]
+    train_data_points = data[:length]
+    validation_data_points = data[length:]
     validation_data_points['Predictions'] = predictions
 
     # Plot results
@@ -148,4 +160,5 @@ def plot_results(col, length, predictions):
     plt.show()
 
 
-build_and_predict('aapl')
+predictions, metrics = build_and_predict('aapl')
+plot_results(data, training_data_len, predictions)
