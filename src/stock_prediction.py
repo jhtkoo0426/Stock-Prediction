@@ -114,6 +114,24 @@ def run_model(X_train, Y_train):
     return model
 
 
+def plot_results(data, length, predictions):
+    # Prepare results for plot
+    train_data_points = data[:length]
+    validation_data_points = data[length:]
+    validation_data_points['Predictions'] = predictions
+
+    # Plot results
+    plt.figure(figsize=(16, 8))
+    plt.title('Stock prediction for aapl using LSTM')
+    plt.xlabel('Time')
+    plt.ylabel('Price of aapl in USD ($)')
+    plt.plot(train_data_points['c'])
+    plt.plot(validation_data_points[['c', 'Predictions']])
+    plt.legend(['Train', 'Validation', 'Predictions'], loc='lower right')
+    plt.grid()
+    plt.show()
+
+
 # Main function
 def build_and_predict(symbol):
     df = download_stock_data(symbol)
@@ -139,26 +157,11 @@ def build_and_predict(symbol):
         "rmse": rmse,
     }
 
+    # plot_results(data, training_data_len, predictions)
     return predictions, metrics
 
 
-def plot_results(data, length, predictions):
-    # Prepare results for plot
-    train_data_points = data[:length]
-    validation_data_points = data[length:]
-    validation_data_points['Predictions'] = predictions
-
-    # Plot results
-    plt.figure(figsize=(16, 8))
-    plt.title('Stock prediction for aapl using LSTM')
-    plt.xlabel('Time')
-    plt.ylabel('Price of aapl in USD ($)')
-    plt.plot(train_data_points['c'])
-    plt.plot(validation_data_points[['c', 'Predictions']])
-    plt.legend(['Train', 'Validation', 'Predictions'], loc='lower right')
-    plt.grid()
-    plt.show()
 
 
-predictions, metrics = build_and_predict('aapl')
-plot_results(data, training_data_len, predictions)
+
+metrics, predictions = build_and_predict('aapl')
