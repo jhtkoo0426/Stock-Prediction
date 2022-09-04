@@ -8,15 +8,13 @@ import keras.callbacks
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
 import time
 import datetime
 import finnhub as fh
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 from keras.models import Sequential
-from keras.layers import LSTM, Dropout, Dense
+from keras.layers import LSTM, Dense
 
 
 FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY')
@@ -114,7 +112,7 @@ def run_model(X_train, Y_train):
     return model
 
 
-def plot_results(data, length, predictions):
+def plot_results(data, symbol, length, predictions):
     # Prepare results for plot
     train_data_points = data[:length]
     validation_data_points = data[length:]
@@ -122,9 +120,9 @@ def plot_results(data, length, predictions):
 
     # Plot results
     plt.figure(figsize=(16, 8))
-    plt.title('Stock prediction for aapl using LSTM')
+    plt.title(f'Stock prediction of {symbol} using LSTM')
     plt.xlabel('Time')
-    plt.ylabel('Price of aapl in USD ($)')
+    plt.ylabel(f'Price of {symbol} in USD ($)')
     plt.plot(train_data_points['c'])
     plt.plot(validation_data_points[['c', 'Predictions']])
     plt.legend(['Train', 'Validation', 'Predictions'], loc='lower right')
@@ -150,18 +148,16 @@ def build_and_predict(symbol):
     predictions = trained_model.predict(x_test)
     predictions = scaler.inverse_transform(predictions)         # Un-scaling the transformed values
 
-    # Get the RMSE
-    rmse = np.sqrt(np.mean(predictions-y_test)**2)
+    # Calculating various metrics
+    rmse = np.sqrt(np.mean(predictions-y_test)**2)              # Get the root mean squared error
 
     metrics = {
         "rmse": rmse,
     }
 
-    # plot_results(data, training_data_len, predictions)
+    plot_results(data, symbol, training_data_len, predictions)
     return predictions, metrics
 
 
-
-
-
-metrics, predictions = build_and_predict('aapl')
+predictions, metrics = build_and_predict('aapl')
+print(f"RMSE for the model was: {metrics['rmse']}")
