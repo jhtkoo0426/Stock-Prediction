@@ -27,53 +27,46 @@ class CustomCallback(keras.callbacks.Callback):
         print("End epoch {} of training; got log keys: {}".format(epoch, keys))
 
 
-# Download historical data for one stock symbol from Finnhub.
-def download_stock_data(symbol):
+# Downloads dataframe of stock symbol from Finnhub. Data includes open, high, low, close prices and volume of the stock.
+def downloadStockData(symbol):
     start = time.mktime(datetime.datetime.strptime('01/01/2000', '%d/%m/%Y').timetuple())
     end = time.time()
-    fh_client = fh.Client(api_key=FINNHUB_API_KEY)
-    candles_dict = fh_client.stock_candles(symbol, 'D', int(start), int(end))
-    stock_df = pd.DataFrame(candles_dict)
-    # print(stock_df.shape)
-    return stock_df
+
+    finnhubClient = fh.Client(api_key=FINNHUB_API_KEY)
+    candlesDict = finnhubClient.stock_candles(symbol, 'D', int(start), int(end))
+    stockDataframe = pd.DataFrame(candlesDict)
+    return stockDataframe
 
 
 # Create a new dataframe with only the closing column
-def get_closing_column(df):
-    col = df.filter(['c'])
+def getClosingPriceColumn(dataframe):
+    col = dataframe.filter(['c'])
     col_arr = col.values       # Convert to np.array
-    # print(dataset.shape)
-    # print(dataset)
     return col, col_arr
 
 
-# Calculate the amount of training data
-def calc_training_data_len(ds):
-    length = math.ceil(len(ds) * .8)
-    # print(length)
-    return length
+# Calculate the amount of training data examples
+def calculateTrainingDataLength(dataframe):
+    return math.ceil(len(dataframe) * .8)
 
 
-def create_scaler():
-    min_scaler = MinMaxScaler(feature_range=(0, 1))
-    return min_scaler
+def createScaler():
+    return MinMaxScaler(feature_range=(0, 1))
 
 
 # Scale the data for training
-def rescale(ds, min_scaler):
-    rescaled_data = min_scaler.fit_transform(ds)
-    # print(rescaled_data)
-    return rescaled_data
+def rescaleData(scaler, dataframe):
+    return scaler.fit_transform(dataframe)
 
 
 # Create the training dataset
-def build_training_ds(dataset, training_data_len):
-    train = dataset[0:training_data_len, :]
-    x_train, y_train = [], []       # Split the data into x_train and y_train datasets
+def buildTrainingDataset(dataset, trainingDataLength):
+    trainingDataset = dataset[0:trainingDataLength, :]
+    x_train, y_train = [], []                           # Split the data into x_train and y_train datasets
 
-    for i in range(60, len(train)):
-        x_train.append(train[i - 60:i, 0])  # Contains 60 values
-        y_train.append(train[i, 0])
+    for i in range(60, len(trainingDataset)):
+        x_train.append(trainingDataset[i - 60:i, 0])
+        y_train.append(trainingDataset[i, 0])
 
     x_train, y_train = np.array(x_train), np.array(y_train)
 
@@ -83,81 +76,91 @@ def build_training_ds(dataset, training_data_len):
 
 
 # Create the testing dataset
-def build_testing_ds(dataset, scaled_dataset, length):
-    # Create the testing dataset
-    testing_dataset = scaled_dataset[length - 60:, :]
-    x_testing = []
-    y_testing = dataset[length:, :]
-    for i in range(60, len(testing_dataset)):
-        x_testing.append(testing_dataset[i - 60:i, 0])
+def buildTestingDataset(dataset, scaledDataset, trainingDataLength):
+    testingDataset = scaledDataset[trainingDataLength - 60:, :]        # Create the testing dataset
+    x_testing, y_testing = [], dataset[trainingDataLength:, :]
 
-    # Convert data to np.array
+    for i in range(60, len(testingDataset)):
+        x_testing.append(testingDataset[i - 60:i, 0])
+
     x_testing = np.array(x_testing)
     x_testing = np.reshape(x_testing, (x_testing.shape[0], x_testing.shape[1], 1))
     return x_testing, y_testing
 
 
 # Build and train LSTM model
-def run_model(X_train, Y_train):
-    # Build LSTM model
+def trainModel(x_train, y_train):
     model = Sequential()
-    model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+    model.add(LSTM(50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
     model.add(LSTM(50, return_sequences=False))
     model.add(Dense(25))
     model.add(Dense(1))
-    model.compile(optimizer='adam', loss='mean_squared_error')  # Compile the model
-
-    # Train the model
-    model.fit(X_train, Y_train, batch_size=60, epochs=100, callbacks=[CustomCallback()])
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.fit(x_train, y_train, batch_size=60, epochs=100, callbacks=[CustomCallback()])
     return model
 
 
-def plot_results(data, symbol, length, predictions):
+def plot_results(data, symbol, length, modelPredictions):
     # Prepare results for plot
-    train_data_points = data[:length]
-    validation_data_points = data[length:]
-    validation_data_points['Predictions'] = predictions
+    trainDataPoints = data[:length]
+    validationDataPoints = data[length:]
+    validationDataPoints['Predictions'] = modelPredictions
 
     # Plot results
     plt.figure(figsize=(16, 8))
     plt.title(f'Stock prediction of {symbol} using LSTM')
     plt.xlabel('Time')
     plt.ylabel(f'Price of {symbol} in USD ($)')
-    plt.plot(train_data_points['c'])
-    plt.plot(validation_data_points[['c', 'Predictions']])
+    plt.plot(trainDataPoints['c'])
+    plt.plot(validationDataPoints[['c', 'Predictions']])
     plt.legend(['Train', 'Validation', 'Predictions'], loc='lower right')
     plt.grid()
     plt.show()
 
 
-# Main function
-def build_and_predict(symbol):
-    df = download_stock_data(symbol)
-    data, dataset = get_closing_column(df)
-    training_data_len = calc_training_data_len(dataset)
+# Create training and testing datasets
+def buildTrainModel(symbol):
+    stockCandlesDataframe = downloadStockData(symbol)
+    closingPriceColumn, unscaledPriceValues = getClosingPriceColumn(stockCandlesDataframe)
 
-    scaler = create_scaler()
-    scaled_data = rescale(dataset, scaler)
+    trainingDataLength = calculateTrainingDataLength(unscaledPriceValues)
 
-    xt, yt = build_training_ds(scaled_data, training_data_len)
-    trained_model = run_model(xt, yt)
+    scaler = createScaler()
+    scaledPriceValues = rescaleData(scaler, unscaledPriceValues)
+    x_training, y_training = buildTrainingDataset(scaledPriceValues, trainingDataLength)
+    x_testing, y_testing = buildTestingDataset(unscaledPriceValues, scaledPriceValues, trainingDataLength)
 
-    x_test, y_test = build_testing_ds(dataset, scaled_data, training_data_len)
+    trainedModel = trainModel(x_training, y_training)
+    modelParams = {
+        "closingPriceColumn": closingPriceColumn,       # Used to plot graph
+        "scaler": scaler,                               # Used to inverse transform predictions into symbol share prices
+        "trainingDataLength": trainingDataLength,
+        "x_testing": x_testing,
+        "y_testing": y_testing,
+    }
+    return trainedModel, modelParams
 
-    # Get the model's predicted price values
-    predictions = trained_model.predict(x_test)
-    predictions = scaler.inverse_transform(predictions)         # Un-scaling the transformed values
 
-    # Calculating various metrics
-    rmse = np.sqrt(np.mean(predictions-y_test)**2)              # Get the root mean squared error
+def predictWithModel(model, modelParams):
+    scaler, x_testing, y_testing = modelParams["scaler"], modelParams["x_testing"], modelParams["y_testing"]
+    predictions = model.predict(x_testing)
+    predictions = scaler.inverse_transform(predictions)
 
     metrics = {
-        "rmse": rmse,
+        "rmse": np.sqrt(np.mean(predictions - y_testing) ** 2)
     }
 
-    plot_results(data, symbol, training_data_len, predictions)
     return predictions, metrics
 
+# def saveModel(model):
+#     model.save()
 
-predictions, metrics = build_and_predict('aapl')
-print(f"RMSE for the model was: {metrics['rmse']}")
+
+sym = 'aapl'
+testModel, testModelParams = buildTrainModel(sym)
+dataForPlot = testModelParams["closingPriceColumn"]
+tdl = testModelParams["trainingDataLength"]
+predict, metric = predictWithModel(testModel, testModelParams)
+testModelParams["symbol"] = sym
+plot_results(dataForPlot, sym, tdl, predict)
+print(f"RMSE for the model was: {metric['rmse']}")
