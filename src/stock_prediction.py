@@ -195,9 +195,9 @@ class StockDataProcessor:
         self.model.compile(optimizer='adam', loss='mean_squared_error')
         self.model.fit(self.trainingDataX, self.trainingDataY, batch_size=batch_size, epochs=epochs, callbacks=[])
 
-    def predict_with_model(self):
+    def predict_against_validation(self):
         """
-        Make predictions using a trained LSTM model.
+        Make predictions against the validation dataset using a trained LSTM model.
 
         :return: predictions: a list of predicted share price values generated from the model;
                  metrics: a dictionary of various metrics
@@ -209,6 +209,12 @@ class StockDataProcessor:
             "rmse": np.sqrt(np.mean(predictions - self.testingDataY) ** 2)
         }
         return predictions, metrics
+
+    def predict_new_prices(self, days: int):
+        # Use the last n prices to predict future share prices.
+        predictions = self.model.predict(self.testingDataX[-days:])
+        predictions = self.scaler.inverse_transform(predictions)
+        return predictions
 
 
 class StockPrediction:
@@ -243,11 +249,14 @@ class StockPrediction:
     def trainModel(self, batch_size, epochs):
         self.processor.train_model(batch_size=batch_size, epochs=epochs)
 
-    def predict(self):
-        predictions, metrics = self.processor.predict_with_model()
+    def predict_validation_set(self):
+        predictions, metrics = self.processor.predict_against_validation()
         return predictions, metrics
 
-    def plot_model_results(self, predictions):
+    def predict_future(self, days):
+        return self.processor.predict_new_prices(days)
+
+    def plot_validation_results(self, predictions):
         """
         Plot a graph of the real historical share price data and the model's predictions against time.
 
@@ -264,12 +273,29 @@ class StockPrediction:
 
         # Plot results
         plt.figure(figsize=(16, 8))
-        plt.title(f'Stock prediction of {self.symbol} using LSTM')
+        plt.title(f'Stock prediction of {self.symbol} against validation set')
         plt.xlabel('Time')
         plt.ylabel(f'Price of {self.symbol} in USD ($)')
         plt.plot(trainingDataPoints['c'])
         plt.plot(validationDataPoints[['c', 'Predictions']])
         plt.legend(['Train', 'Validation', 'Predictions'], loc='lower right')
+        plt.grid()
+        plt.show()
+
+    def plot_future_results(self, predictions):
+        closingPricesColumn = self.processor.get_column(['c'])
+        print(closingPricesColumn)
+        predictions = pd.DataFrame(predictions)
+        predictions.index += len(self.processor.raw_dataframe)
+        print(predictions)
+
+        plt.figure(figsize=(16, 8))
+        plt.title(f'Stock forecasting of {self.symbol}')
+        plt.xlabel('Time')
+        plt.ylabel(f'Price of {self.symbol} in USD ($)')
+        plt.plot(closingPricesColumn)
+        plt.plot(predictions)
+        plt.legend(['Past prices', 'Future prices'], loc='lower right')
         plt.grid()
         plt.show()
 
@@ -280,6 +306,9 @@ predictor = StockPrediction(sym, os.environ.get('FINNHUB_API_KEY'))
 predictor.create_data_processor()
 predictor.trainModel(batch_size=60, epochs=1)
 
-p, m = predictor.predict()
-predictor.plot_model_results(p)
+p, m = predictor.predict_validation_set()
+predictor.plot_validation_results(p)
 print(m)
+
+future = predictor.predict_future(30)
+predictor.plot_future_results(future)
