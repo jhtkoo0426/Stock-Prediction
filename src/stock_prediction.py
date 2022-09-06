@@ -3,21 +3,17 @@ Training a model to predict the price trend for a single stock.
 """
 import math
 import os
-
 import keras.callbacks
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 import datetime
 import finnhub as fh
+import pandas as pd
+from pandas.core.common import SettingWithCopyWarning
 from sklearn.preprocessing import MinMaxScaler
-
 from keras.models import Sequential
 from keras.layers import LSTM, Dense
-
-
-FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY')
 
 
 # Callback methods
@@ -30,16 +26,43 @@ class CustomCallback(keras.callbacks.Callback):
 # Class responsible for establishing connections to the Finnhub API to fetch data.
 class FinnhubClient:
     def __init__(self):
+        """
+        Construct a new 'FinnhubClient' instance.
+
+        :return: returns nothing
+        """
+
         self.api_key = None
         self.client = None
 
     def update_key(self, key: str):
+        """
+        Updates the current key with a new key. If no key was previously set, use the key as the current key.
+
+        :param key: a registered API key from Finnhub
+        :return: returns nothing
+        """
+
         self.api_key = key
 
-    def start_client(self):
+    def create_client(self):
+        """
+        Establish a connection to the Finnhub API using the current api key
+
+        :return: returns nothing
+        """
+
         self.client = fh.Client(api_key=self.api_key)
 
     def download_stock_data(self, symbol: str):
+        """
+        Fetches historical share price data of a stock starting from 1 Jan, 2000.
+
+        :param symbol: an abbreviation used to uniquely identify publicly traded shares of a particular stock on a
+                       particular stock market
+        :return: a dataframe consisting of open, close, high, low share prices and the volume of trades of the day
+        """
+
         start = time.mktime(
             datetime.datetime.strptime('01/01/2000', '%d/%m/%Y').timetuple()  # Timestamp of 1 Jan, 2000.
         )
@@ -60,63 +83,125 @@ class StockDataProcessor:
         self.training_data_length = 0
         self.scaler = MinMaxScaler(feature_range=(0, 1))
 
-        self.trainingDataX, self.trainingDataY = None, None
-        self.testingDataX, self.testingDataY = None, None
+        self.trainingDataX, self.trainingDataY = [], []
+        self.testingDataX, self.testingDataY = [], None
 
         self.model = None
 
-    def create_processor(self, dataframe):
+    def create_processor(self, dataframe: pd.DataFrame):
+        """
+        Initialize the data processor with a dataframe.
+
+        :param dataframe: the target dataframe for processing
+        :return: returns nothing
+        """
         self.raw_dataframe = dataframe
 
-    def set_training_data_length(self, split_percentage):
+    def set_training_data_length(self, split_percentage: float):
+        """
+        Set the amount of training data as a proportion of the full dataset.
+
+        :param split_percentage: a percentage float
+        :return: returns nothing
+        """
         if self.raw_dataframe is not None:
             self.training_data_length = math.ceil(len(self.raw_dataframe) * split_percentage)
 
-    def get_column(self, column_names):
+    def get_column(self, column_names: list):
+        """
+
+        :param column_names: a list of column names
+        :return: a filtered dataframe consisting of the selected columns by name only
+        """
+
         return self.raw_dataframe.filter(column_names)
 
     def set_unscaled_prices(self):
+        """
+        Create a list consisting of the closing price values of a symbol. The values must be unscaled.
+
+        :return: returns nothing
+        """
+
         self.unscaled_prices = self.get_column(column_names=['c']).values
 
     def rescale_prices(self):
+        """
+        Rescale the closing prices for training.
+
+        :return: returns nothing
+        """
+
         closingPriceColumn = self.get_column(column_names=['c'])
         self.scaled_prices = self.scaler.fit_transform(closingPriceColumn)
 
-    def reshape_array(self, np_array):
+    @staticmethod
+    def reshape_array(np_array):
+        """
+        Reshape an array to fit the LSTM model's shape.
+
+        :param np_array: a numpy array
+        :return: a reshaped numpy array with the same dimensions as the LSTM model
+        """
+
         return np.reshape(np_array, (np_array.shape[0], np_array.shape[1], 1))
 
     def build_training_dataset(self):
-        trainingDataset = self.scaled_prices[0:self.training_data_length, :]
-        x_train, y_train = [], []
+        """
+        Create a training dataset from the raw dataframe.
+
+        :return: returns nothing
+        """
+
+        trainingDataset = self.scaled_prices[0:self.training_data_length, :]        # Split the dataframe for training
 
         for i in range(60, len(trainingDataset)):
-            x_train.append(trainingDataset[i-60:i, 0])
-            y_train.append(trainingDataset[i, 0])
+            self.trainingDataX.append(trainingDataset[i-60:i, 0])
+            self.trainingDataY.append(trainingDataset[i, 0])
 
-        self.trainingDataX = self.reshape_array(np.array(x_train))
-        self.trainingDataY = np.array(y_train)
+        self.trainingDataX = self.reshape_array(np.array(self.trainingDataX))
+        self.trainingDataY = np.array(self.trainingDataY)
 
     def build_testing_dataset(self):
-        testingDataset = self.scaled_prices[self.training_data_length - 60: , :]
-        x_test = []
-        y_test = self.unscaled_prices[self.training_data_length:, :]
+        """
+        Create a testing dataset from the raw dataframe.
+
+        :return: returns nothing
+        """
+
+        testingDataset = self.scaled_prices[self.training_data_length - 60: , :]    # Split the dataframe for testing
+        self.testingDataX = []
 
         for i in range(60, len(testingDataset)):
-            x_test.append(testingDataset[i-60:i, 0])
+            self.testingDataX.append(testingDataset[i-60:i, 0])
 
-        self.testingDataX = self.reshape_array(np.array(x_test))
-        self.testingDataY = y_test
+        self.testingDataX = self.reshape_array(np.array(self.testingDataX))
+        self.testingDataY = self.unscaled_prices[self.training_data_length:, :]
 
-    def train_model(self):
+    def train_model(self, batch_size: int, epochs: int):
+        """
+        Train a LSTM model.
+
+        :param batch_size: an integer to indicate the number of training examples to be used in one epoch
+        :param epochs: an integer to indicate the number of epochs used to train the model.
+        :return: returns nothing.
+        """
+
         self.model = Sequential()
         self.model.add(LSTM(50, return_sequences=True, input_shape=(self.trainingDataX.shape[1], 1)))
         self.model.add(LSTM(50, return_sequences=False))
         self.model.add(Dense(25))
         self.model.add(Dense(1))
         self.model.compile(optimizer='adam', loss='mean_squared_error')
-        self.model.fit(self.trainingDataX, self.trainingDataY, batch_size=1, epochs=1, callbacks=[])
+        self.model.fit(self.trainingDataX, self.trainingDataY, batch_size=batch_size, epochs=epochs, callbacks=[])
 
     def predict_with_model(self):
+        """
+        Make predictions using a trained LSTM model.
+
+        :return: predictions: a list of predicted share price values generated from the model;
+                 metrics: a dictionary of various metrics
+        """
         predictions = self.model.predict(self.testingDataX)
         predictions = self.scaler.inverse_transform(predictions)
 
@@ -127,16 +212,24 @@ class StockDataProcessor:
 
 
 class StockPrediction:
-    def __init__(self, symbol):
-        self.finnhub_client = FinnhubClient()
-        self.processor = StockDataProcessor()
+    def __init__(self, symbol, api_key):
+        """
+        The main class to combine everything together.
+
+        :param symbol: an abbreviation used to uniquely identify publicly traded shares of a particular stock on a
+                       particular stock market
+        :param api_key: a registered API key from Finnhub
+        """
 
         self.symbol = symbol
+        self.api_key = api_key
         self.trained_model = None
 
-    def create_finnhub_client(self, api_key: str):
+        self.finnhub_client = FinnhubClient()
         self.finnhub_client.update_key(api_key)
-        self.finnhub_client.start_client()
+        self.finnhub_client.create_client()
+
+        self.processor = StockDataProcessor()
 
     def create_data_processor(self):
         candles = self.finnhub_client.download_stock_data(self.symbol)
@@ -147,18 +240,27 @@ class StockPrediction:
         self.processor.build_training_dataset()
         self.processor.build_testing_dataset()
 
-    def trainModel(self):
-        self.processor.train_model()
+    def trainModel(self, batch_size, epochs):
+        self.processor.train_model(batch_size=batch_size, epochs=epochs)
 
     def predict(self):
         predictions, metrics = self.processor.predict_with_model()
         return predictions, metrics
 
     def plot_model_results(self, predictions):
+        """
+        Plot a graph of the real historical share price data and the model's predictions against time.
+
+        :param predictions: predictions generated from the model
+        :return: returns nothing
+        """
         closingPricesColumn = self.processor.get_column(['c'])
         trainingDataPoints = closingPricesColumn[:self.processor.training_data_length]
         validationDataPoints = closingPricesColumn[self.processor.training_data_length:]
-        validationDataPoints['Predictions'] = predictions
+        try:
+            validationDataPoints['Predictions'] = predictions
+        except SettingWithCopyWarning:
+            pass
 
         # Plot results
         plt.figure(figsize=(16, 8))
@@ -174,10 +276,10 @@ class StockPrediction:
 
 sym = 'aapl'
 
-predictor = StockPrediction(sym)
-predictor.create_finnhub_client(os.environ.get('FINNHUB_API_KEY'))
+predictor = StockPrediction(sym, os.environ.get('FINNHUB_API_KEY'))
 predictor.create_data_processor()
-predictor.trainModel()
+predictor.trainModel(batch_size=60, epochs=1)
 
 p, m = predictor.predict()
 predictor.plot_model_results(p)
+print(m)
