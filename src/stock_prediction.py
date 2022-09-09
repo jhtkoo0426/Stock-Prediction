@@ -90,11 +90,13 @@ class StockDataProcessor:
 
     def create_processor(self, dataframe: pd.DataFrame):
         """
-        Initialize the data processor with a dataframe.
+        Initialize the data processor with a dataframe. Also re-indexes the dataframe to a timestamp column.
 
         :param dataframe: the target dataframe for processing
         :return: returns nothing
         """
+        dataframe['t'] = [datetime.datetime.fromtimestamp(x) for x in dataframe['t']]
+        dataframe.set_index('t', inplace=True)
         self.raw_dataframe = dataframe
 
     def set_training_data_length(self, split_percentage: float):
@@ -304,7 +306,7 @@ sym = 'aapl'
 
 predictor = StockPrediction(sym, os.environ.get('FINNHUB_API_KEY'))
 predictor.create_data_processor()
-predictor.trainModel(batch_size=60, epochs=1)
+predictor.trainModel(batch_size=60, epochs=100)
 
 p, m = predictor.predict_validation_set()
 predictor.plot_validation_results(p)
