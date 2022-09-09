@@ -99,6 +99,20 @@ class StockDataProcessor:
         dataframe.set_index('t', inplace=True)
         self.raw_dataframe = dataframe
 
+    @staticmethod
+    def export_to_json(dataframe, columns: list):
+        """
+        Convert a dataframe with specified column(s) to a json dictionary.
+
+        :param dataframe: pandas dataframe
+        :param columns: list of column names
+        :return: json dictionary of dataframe columns as lists
+        """
+        json_dict = {}
+        for column_name in columns:
+            json_dict[column_name] = dataframe[column_name].tolist()
+        return json_dict
+
     def set_training_data_length(self, split_percentage: float):
         """
         Set the amount of training data as a proportion of the full dataset.
