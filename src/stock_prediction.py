@@ -129,7 +129,6 @@ class StockDataProcessor:
         :param column_names: a list of column names
         :return: a filtered dataframe consisting of the selected columns by name only
         """
-
         return self.raw_dataframe.filter(column_names)
 
     def set_unscaled_prices(self):
@@ -272,6 +271,15 @@ class StockPrediction:
     def predict_future(self, days):
         return self.processor.predict_new_prices(days)
 
+    def export_dataframe(self):
+        dataframe = self.processor.raw_dataframe
+        column_names = ['o', 'h', 'l', 'c']     # open, high, low & close prices columns
+        return self.processor.export_to_json(dataframe=dataframe, columns=column_names)
+
+    def export_future_predictions(self, predictions):
+        column_names = ['0']
+        return self.processor.export_to_json(dataframe=predictions, columns=column_names)
+
     def plot_validation_results(self, predictions):
         """
         Plot a graph of the real historical share price data and the model's predictions against time.
@@ -320,11 +328,12 @@ sym = 'aapl'
 
 predictor = StockPrediction(sym, os.environ.get('FINNHUB_API_KEY'))
 predictor.create_data_processor()
-predictor.trainModel(batch_size=60, epochs=100)
+predictor.trainModel(batch_size=1, epochs=1)
 
 p, m = predictor.predict_validation_set()
 predictor.plot_validation_results(p)
 print(m)
 
 future = predictor.predict_future(30)
+print(future)
 predictor.plot_future_results(future)
