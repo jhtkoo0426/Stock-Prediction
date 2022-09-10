@@ -277,8 +277,7 @@ class StockPrediction:
         return self.processor.export_to_json(dataframe=dataframe, columns=column_names)
 
     def export_future_predictions(self, predictions):
-        column_names = ['0']
-        return self.processor.export_to_json(dataframe=predictions, columns=column_names)
+        return predictions[0]       # predictions column in np array
 
     def plot_validation_results(self, predictions):
         """
@@ -331,9 +330,9 @@ predictor.create_data_processor()
 predictor.trainModel(batch_size=1, epochs=1)
 
 p, m = predictor.predict_validation_set()
-predictor.plot_validation_results(p)
-print(m)
-
 future = predictor.predict_future(30)
-print(future)
-predictor.plot_future_results(future)
+
+raw_dataframe_json = predictor.export_dataframe()
+print(raw_dataframe_json)
+future_prediction_json = predictor.export_future_predictions(predictions=future)
+print(future_prediction_json)
